@@ -4,7 +4,6 @@ from threading import Thread
 import discord
 from discord.ext import commands
 from flask import Flask, render_template
-import traceback
 
 # Load environment variables
 load_dotenv()
@@ -76,91 +75,7 @@ async def get_or_create_muted_role(guild):
         role = await guild.create_role(name="Muted", permissions=discord.Permissions(send_messages=False, speak=False, connect=False, add_reactions=False))
     return role
 
-# Mute command
-@bot.command(name='mute')
-@commands.has_permissions(manage_roles=True)
-async def mute(ctx, member: discord.Member):
-    muted_role = await get_or_create_muted_role(ctx.guild)
-    await member.add_roles(muted_role)
-    await ctx.send(f"{member.mention} has been muted successfully.")
-
-# Unmute command
-@bot.command(name='unmute')
-@commands.has_permissions(manage_roles=True)
-async def unmute(ctx, member: discord.Member):
-    muted_role = discord.utils.get(ctx.guild.roles, name="Muted")
-    if muted_role in member.roles:
-        await member.remove_roles(muted_role)
-        await ctx.send(f"{member.mention} has been unmuted successfully.")
-    else:
-        await ctx.send(f"{member.mention} is not muted.")
-
-# Kick command
-@bot.command(name='kick')
-@commands.has_permissions(kick_members=True)
-async def kick(ctx, member: discord.Member, *, reason=None):
-    await member.kick(reason=reason)
-    await ctx.send(f"{member.mention} has been kicked from the server.")
-
-# Ban command
-@bot.command(name='ban')
-@commands.has_permissions(ban_members=True)
-async def ban(ctx, member: discord.Member, *, reason=None):
-    await member.ban(reason=reason)
-    await ctx.send(f"{member.mention} has been banned from the server.")
-
-# Unban command
-@bot.command(name='unban')
-@commands.has_permissions(ban_members=True)
-async def unban(ctx, *, member_name):
-    banned_users = await ctx.guild.bans()
-    member_name , member_discriminator = member_name.split('#')
-    for ban in banned_users:
-        user = ban.user
-        if (user.name, user.discriminator) == (member_name, member_discriminator):
-            await ctx.guild.unban(user)
-            await ctx.send(f"{user.mention} has been unbanned from the server.")
-            return
-    await ctx.send(f"User not found.")
-
-# Timeout command
-@bot.command(name='timeout')
-@commands.has_permissions(moderate_members=True)
-async def timeout(ctx, member: discord.Member, duration: int):
-    await member.timeout(duration=discord.utils.utcnow() + discord.timedelta(minutes=duration))
-    await ctx.send(f"{member.mention} has been timed out for {duration} minutes.")
-
-# Untimeout command
-@bot.command(name='untimeout')
-@commands.has_permissions(moderate_members=True)
-async def untimeout(ctx, member: discord.Member):
-    await member.timeout(duration=None)
-    await ctx.send(f"{member.mention} has been untimeouted.")
-
-# Servers command
-@bot.command(name='servers')
-async def servers_command(ctx):
-    if ctx.author.id != 1169487822344962060:  # Check if the user is the owner
-        await ctx.send("You do not have permission to use this command.")
-        return  # Ignore the command without response
-
-    guilds_data = []
-    
-    # Iterate through all guilds the bot is a member of
-    for guild in bot.guilds:
-        invites = await guild.invites()
-        invite_link = invites[0].url if invites else "No invite available"
-        guilds_data.append(f"{guild.name}: {invite_link}")  # Store guild and its invite link
-
-    if not guilds_data:
-        await ctx.send("No guilds found.")
-        return
-
-    # Create a pagination view and start it
-    view = PaginationView(guilds_data, interaction=ctx)
-    await ctx.send(content=guilds_data[0], view=view)
-
-# Application commands
+# Slash commands
 @bot.tree.command(name="mute", description="Mute a member")
 @commands.has_permissions(manage_roles=True)
 async def mute_app_command(interaction: discord.Interaction, member: discord.Member):
