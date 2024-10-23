@@ -2,10 +2,9 @@ from dotenv import load_dotenv
 import os
 from threading import Thread
 import discord
-from discord.ext import commands, menus
+from discord.ext import commands
 from flask import Flask, render_template
 import traceback
-from typing import Optional, Any
 
 # Load environment variables
 load_dotenv()
@@ -32,207 +31,189 @@ def commands_page():
 
 # Pagination classes
 class PaginationView(discord.ui.View):
-    def __init__(self, source: menus.PageSource, *, interaction: commands.Context | discord.Interaction, check_embeds: bool = True, compact: bool = False):
+    def __init__(self, pages: list[str], *, interaction: discord.Interaction):
         super().__init__()
-        self.source: menus.PageSource = source
-        self.check_embeds: bool = check_embeds
+        self.pages = pages
+        self.current_page = 0
         self.interaction = interaction
-        self.message: Optional[discord.Message] = None
-        self.current_page: int = 0
-        self.compact: bool = compact
-        self.clear_items()
-        self.fill_items()
+        self.update_buttons()
 
-    def fill_items(self) -> None:
-        if self.source.is_paginating():
-            if not self.compact:
-                self.add_item(self.go_to_first_page)
-            self.add_item(self.go_to_previous_page)
-            self.add_item(self.stop_pages)
-            self.add_item(self.go_to_next_page)
-            if not self.compact:
-                self.add_item(self.go_to_last_page)
+    def update_buttons(self):
+        self.go_to_first_page.disabled = self.current_page == 0
+        self.go_to_previous_page.disabled = self.current_page == 0
+        self.go_to_next_page.disabled = self.current_page >= len(self.pages) - 1
+        self.go_to_last_page.disabled = self.current_page >= len(self.pages) - 1
 
-    async def _get_kwargs_from_page(self, page: int) -> dict[str, Any]:
-        value = await discord.utils.maybe_coroutine(self.source.format_page, self, page)
-        if isinstance(value, dict):
-            return value
-        elif isinstance(value, str):
-            return {'content': value, 'embed': None}
-        elif isinstance(value, discord.Embed):
-            return {'embed': value, 'content': None}
-        else:
-            return {}
+    async def show_page(self):
+        await self.interaction.response.edit_message(content=self.pages[self.current_page], view=self)
 
-    async def show_page(self, interaction: discord.Interaction, page_number: int) -> None:
-        page = await self.source.get_page(page_number)
-        self.current_page = page_number
-        kwargs = await self._get_kwargs_from_page(page)
-        self._update_labels(page_number)
-        if kwargs:
-            if interaction.response.is_done():
-                if self.message:
-                    await self.message.edit(**kwargs, view=self)
-            else:
-                await interaction.response.edit_message(**kwargs, view=self)
-
-    def _update_labels(self, page_number: int) -> None:
-        self.go_to_first_page.disabled = page_number == 0
-        max_pages = self.source.get_max_pages()
-        self.go_to_next_page.disabled = max_pages is not None and (page_number + 1) >= max_pages
-        self.go_to_previous_page.disabled = page_number == 0
-        if not self.compact:
-            self.go_to_last_page.disabled = (page_number + 1) >= max_pages
-
-    async def show_checked_page(self, interaction: discord.Interaction, page_number: int) -> None:
-        max_pages = self.source.get_max_pages()
-        try:
-            if max_pages is None:
-                await self.show_page(interaction, page_number)
-            elif max_pages > page_number >= 0:
-                await self.show_page(interaction, page_number)
-        except IndexError:
-            pass
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if isinstance(self.interaction, commands.Context):
-            predicate = self.interaction.author.id
-        else:
-            predicate = self.interaction.user.id
-
-        if interaction.user and interaction.user.id == predicate:
-            return True
-
-        await interaction.response.send_message('This menu is not for you.', ephemeral=True)
-        return False
-
-    async def on_timeout(self) -> None:
-        if self.message is not None:
-            for child in self.children:
-                child.disabled = True
-
-            await self.message.edit(view=self)
-
-    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
-        if interaction.response.is_done():
-            await interaction.followup.send('An unknown error occurred, sorry', ephemeral=True)
-        else:
-            await interaction.response.send_message(' An unknown error occurred, sorry', ephemeral=True)
-
-        try:
-            exc = ''.join(traceback.format_exception(type(error), error, error.__traceback__, chain=False))
-            embed = discord.Embed(
-                title=f'{self.source.__class__.__name__} Error',
-description=f'``` py\n{exc}\n```',
-                timestamp=interaction.created_at,
-                colour=0xCC3366,
-            )
-            embed.add_field(name='User', value=f'{interaction.user} ({interaction.user.id})')
-            embed.add_field(name='Guild', value=f'{interaction.guild} ({interaction.guild_id})')
-            embed.add_field(name='Channel', value=f'{interaction.channel} ({interaction.channel_id})')
-
-            if isinstance(self.interaction, discord.Interaction):
-                await self.interaction.followup.send(embed=embed, ephemeral=True)
-            else:
-                await self.interaction.send(embed=embed, ephemeral=True)
-
-        except discord.HTTPException:
-            pass
-
-    async def start(self, *, content: Optional[str] = None, ephemeral: bool = False) -> None:
-        if self.check_embeds and not self.interaction.channel.permissions_for(self.interaction.guild.me).embed_links:  # type: ignore
-            if isinstance(self.interaction, discord.Interaction):
-                await self.interaction.response.send_message('Missing embed permissions.', ephemeral=True)
-                return
-
-            else:
-                await self.interaction.send('Missing embed permissions.', ephemeral=True)
-
-        await self.source._prepare_once()
-        page = await self.source.get_page(0)
-        kwargs = await self._get_kwargs_from_page(page)
-
-        if content:
-            kwargs.setdefault('content', content)
-
-        self._update_labels(0)
-
-        if isinstance(self.interaction, discord.Interaction):
-            if not self.interaction.response.is_done():
-                await self.interaction.response.send_message(**kwargs, view=self, ephemeral=ephemeral)
-                self.message = await self.interaction.original_response()
-
-            else:
-                self.message = await self.interaction.followup.send(wait=True, ephemeral=ephemeral, **kwargs)
-
-        else:
-            self.message = await self.interaction.send(**kwargs, view=self, ephemeral=ephemeral)
-
-    @discord.ui.button(emoji="<:TWD_FIRST:1209075732676874340>", label="First", style=discord.ButtonStyle.blurple)
+    @discord.ui.button(label="First", style=discord.ButtonStyle.blurple)
     async def go_to_first_page(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """go to the first page"""
-        await self.show_page(interaction, 0)
+        self.current_page = 0
+        await self.show_page()
 
-    @discord.ui.button(emoji="<:TWD_PREVIOUS:1298504437823967323>", label='Previous', style=discord.ButtonStyle.blurple)
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.blurple)
     async def go_to_previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """go to the previous page"""
-        await self.show_checked_page(interaction, self.current_page - 1)
+        if self.current_page > 0:
+            self.current_page -= 1
+            await self.show_page()
 
-    @discord.ui.button(emoji="<a:TWD_CROSS:1183023325992202274>", label='Quit', style=discord.ButtonStyle.red)
-    async def stop_pages(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """stops the pagination session."""
-        await interaction.response.defer()
-        await interaction.delete_original_response()
-        self.stop()
-
-    @discord.ui.button(emoji="<:TWD_NEXT:1298504381452517417>", label="Next", style=discord.ButtonStyle.blurple)
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.blurple)
     async def go_to_next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """go to the next page"""
-        await self.show_checked_page(interaction, self.current_page + 1)
+        if self.current_page < len(self.pages) - 1:
+            self.current_page += 1
+            await self.show_page()
 
-    @discord.ui.button(emoji="<:TWD_LAST:1209075810879799339>", label="Last", style=discord.ButtonStyle.blurple)
+    @discord.ui.button(label="Last", style=discord.ButtonStyle.blurple)
     async def go_to_last_page(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """go to the last page"""
-        await self.show_page(interaction, self.source.get_max_pages() - 1)
+        self.current_page = len(self.pages) - 1
+        await self.show_page()
 
-class GuildMenuPageSource(menus.ListPageSource):
-    def __init__(self, data: list[Any], *, per_page: int = 5) -> None:
-        super().__init__(data, per_page=per_page)
+# Mute role creation function
+async def get_or_create_muted_role(guild):
+    role = discord.utils.get(guild.roles, name="Muted")
+    if not role:
+        role = await guild.create_role(name="Muted", permissions=discord.Permissions(send_messages=False, speak=False, connect=False, add_reactions=False))
+    return role
 
-        self.embed = discord.Embed(
-            color=discord.Color.random(),
-            title="Server List",
-            timestamp=discord.utils.utcnow(),
-        )
+# Mute command
+@bot.command(name='mute')
+@commands.has_permissions(manage_roles=True)
+async def mute(ctx, member: discord.Member):
+    muted_role = await get_or_create_muted_role(ctx.guild)
+    await member.add_roles(muted_role)
+    await ctx.send(f"{member.mention} has been muted successfully.")
 
-    async def format_page(self, menu: PaginationView, entries: list[Any]) -> discord.Embed:
-        entries_embed = []
-        for entry in entries:
-            entries_embed.append(f"{entry[0].name}: {entry[1]}")
+# Unmute command
+@bot.command(name='unmute')
+@commands.has_permissions(manage_roles=True)
+async def unmute(ctx, member: discord.Member):
+    muted_role = discord.utils.get(ctx.guild.roles, name="Muted")
+    if muted_role in member.roles:
+        await member.remove_roles(muted_role)
+        await ctx.send(f"{member.mention} has been unmuted successfully.")
+    else:
+        await ctx.send(f"{member.mention} is not muted.")
 
-        self.embed.description = "\n\n".join(entries_embed) or "No guilds were found."
-        return self.embed
+# Kick command
+@bot.command(name='kick')
+@commands.has_permissions(kick_members=True)
+async def kick(ctx, member: discord.Member, *, reason=None):
+    await member.kick(reason=reason)
+    await ctx.send(f"{member.mention} has been kicked from the server.")
 
+# Ban command
+@bot.command(name='ban')
+@commands.has_permissions(ban_members=True)
+async def ban(ctx, member: discord.Member, *, reason=None):
+    await member.ban(reason=reason)
+    await ctx.send(f"{member.mention} has been banned from the server.")
+
+# Unban command
+@bot.command(name='unban')
+@commands.has_permissions(ban_members=True)
+async def unban(ctx, *, member_name):
+    banned_users = await ctx.guild.bans()
+    member_name , member_discriminator = member_name.split('#')
+    for ban in banned_users:
+        user = ban.user
+        if (user.name, user.discriminator) == (member_name, member_discriminator):
+            await ctx.guild.unban(user)
+            await ctx.send(f"{user.mention} has been unbanned from the server.")
+            return
+    await ctx.send(f"User not found.")
+
+# Timeout command
+@bot.command(name='timeout')
+@commands.has_permissions(moderate_members=True)
+async def timeout(ctx, member: discord.Member, duration: int):
+    await member.timeout(duration=discord.utils.utcnow() + discord.timedelta(minutes=duration))
+    await ctx.send(f"{member.mention} has been timed out for {duration} minutes.")
+
+# Untimeout command
+@bot.command(name='untimeout')
+@commands.has_permissions(moderate_members=True)
+async def untimeout(ctx, member: discord.Member):
+    await member.timeout(duration=None)
+    await ctx.send(f"{member.mention} has been untimeouted.")
+
+# Servers command
 @bot.command(name='servers')
 async def servers_command(ctx):
     if ctx.author.id != 1169487822344962060:  # Check if the user is the owner
+        await ctx.send("You do not have permission to use this command.")
         return  # Ignore the command without response
 
     guilds_data = []
-
+    
     # Iterate through all guilds the bot is a member of
     for guild in bot.guilds:
-        # Attempt to get an invite link for the guild
         invites = await guild.invites()
         invite_link = invites[0].url if invites else "No invite available"
-        guilds_data.append((guild, invite_link))  # Store guild and its invite link
+        guilds_data.append(f"{guild.name}: {invite_link}")  # Store guild and its invite link
 
-    # Create a page source with the gathered guild data
-    source = GuildMenuPageSource(guilds_data, per_page=5)  # Adjust per_page as needed
+    if not guilds_data:
+        await ctx.send("No guilds found.")
+        return
 
     # Create a pagination view and start it
-    view = PaginationView(source, interaction=ctx)
-    await view.start(content="Here are the servers I'm in:", ephemeral=True)
+    view = PaginationView(guilds_data, interaction=ctx)
+    await ctx.send(content=guilds_data[0], view=view)
+
+# Application commands
+@bot.tree.command(name="mute", description="Mute a member")
+@commands.has_permissions(manage_roles=True)
+async def mute_app_command(interaction: discord.Interaction, member: discord.Member):
+    muted_role = await get_or_create_muted_role(interaction.guild)
+    await member.add_roles(muted_role)
+    await interaction.response.send_message(f"{member.mention} has been muted successfully.")
+
+@bot.tree.command(name="unmute", description="Unmute a member")
+@commands.has_permissions(manage_roles=True)
+async def unmute_app_command(interaction: discord.Interaction, member: discord.Member):
+    muted_role = discord.utils.get(interaction.guild.roles, name="Muted")
+    if muted_role in member.roles:
+        await member.remove_roles(muted_role)
+        await interaction.response.send_message(f"{member.mention} has been unmuted successfully.")
+    else:
+        await interaction.response.send_message(f"{member.mention} is not muted.")
+
+@bot.tree.command(name="kick", description="Kick a member")
+@commands.has_permissions(kick_members=True)
+async def kick_app_command(interaction: discord.Interaction, member: discord.Member, reason: str = None):
+    await member.kick(reason=reason)
+    await interaction.response.send_message(f"{member.mention} has been kicked from the server.")
+
+@bot.tree.command(name="ban", description="Ban a member")
+@commands.has_permissions(ban_members=True)
+async def ban_app_command(interaction: discord.Interaction, member: discord.Member, reason: str = None):
+    await member.ban(reason=reason)
+    await interaction.response.send_message(f"{member.mention} has been banned from the server.")
+
+@bot.tree.command(name="unban", description="Unban a member")
+@commands.has_permissions(ban_members=True)
+async def unban_app_command(interaction: discord.Interaction, member_name: str):
+    banned_users = await interaction.guild.bans()
+    member_name, member_discriminator = member_name.split('#')
+    for ban in banned_users:
+        user = ban.user
+        if (user.name, user.discriminator) == (member_name, member_discriminator):
+            await interaction.guild.unban(user)
+            await interaction.response.send_message(f"{user.mention} has been unbanned from the server.")
+            return
+    await interaction.response.send_message(f"User not found.")
+
+@bot.tree.command(name="timeout", description="Timeout a member")
+@commands.has_permissions(moderate_members=True)
+async def timeout_app_command(interaction: discord.Interaction, member: discord.Member, duration: int):
+    await member.timeout(duration=discord.utils.utcnow() + discord.timedelta(minutes=duration))
+    await interaction.response.send_message(f"{member.mention} has been timed out for {duration} minutes.")
+
+@bot.tree.command(name="untimeout", description="Untimeout a member")
+@commands.has_permissions(moderate_members=True)
+async def untimeout_app_command(interaction: discord.Interaction, member: discord.Member):
+    await member.timeout(duration=None)
+    await interaction.response.send_message(f"{member.mention} has been untimeouted.")
 
 # Run Flask app in a separate thread
 def run_app():
