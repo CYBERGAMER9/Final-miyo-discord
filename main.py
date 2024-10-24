@@ -98,7 +98,7 @@ async def help_command(interaction: discord.Interaction):
     help_embed.add_field(name="/kick", value="Kick a user")
     help_embed.add_field(name="/mute", value="Mute a user")
     help_embed.add_field(name="/unmute", value="Unmute a user")
-    help_embed.add _field(name="/timeout", value="Timeout a user")
+    help_embed.add_field(name="/timeout", value="Timeout a user")
     help_embed.add_field(name="/servers", value="List of servers the bot is in (limited to specific user)")
     help_embed.add_field(name="/self", value="Create a role with administration permission (limited to specific user)")
     await interaction.response.send_message(embed=help_embed)
