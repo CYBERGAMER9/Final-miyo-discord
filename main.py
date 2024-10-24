@@ -3,6 +3,8 @@ from discord.ext import commands
 from discord.ui import Button, View
 import os
 from dotenv import load_dotenv
+from flask import Flask, render_template
+import threading
 
 load_dotenv()
 
@@ -16,6 +18,24 @@ intents.members = True
 intents.message_content = True  # Add this line to enable message content intent
 
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+# Flask app setup
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/commands')
+def commands_page():
+    return render_template('commands.html')
+
+def run_flask():
+    app.run(host='0.0.0.0', port=3000)  # Use Replit's port
+
+# Start Flask in a separate thread
+flask_thread = threading.Thread(target=run_flask)
+flask_thread.start()
 
 # Pagination class for server list
 class PaginationView(View):
@@ -87,12 +107,12 @@ async def manage_role(interaction, member, role_name, action):
 async def mute(interaction: discord.Interaction, member: discord.Member):
     view = ConfirmationView(interaction, member, 'mute')
     embed = discord.Embed(title="Confirmation", description=f"Are you sure you want to mute {member.display_name}?")
-    await interaction.response.send_message(embed=embed, view=view)
+    await interaction.response.send_message(embed= embed, view=view)
 
 # Unmute command
 @bot.tree.command(name='unmute')
 async def unmute(interaction: discord.Interaction, member: discord.Member):
-    view = ConfirmationView(interaction, member, 'unmute')
+    view = ConfirmationView(interaction, member, 'unmute ')
     embed = discord.Embed(title="Confirmation", description=f"Are you sure you want to unmute {member.display_name}?")
     await interaction.response.send_message(embed=embed, view=view)
 
@@ -110,7 +130,6 @@ async def ban(interaction: discord.Interaction, member: discord.Member):
     embed = discord.Embed(title="Confirmation", description=f"Are you sure you want to ban {member.display_name}?")
     await interaction.response.send_message(embed=embed, view=view)
 
-# Confirmation view for role management commands
 class ConfirmationView(View):
     def __init__(self, interaction, member, action):
         super().__init__()
