@@ -44,24 +44,24 @@ class PaginationView(View):
         self.pages = pages
         self.current_page = 0
 
-    @discord.ui.button(emoji='<:TWD_FIRST:1209075732676874340>', style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label='First', style=discord.ButtonStyle.secondary)
     async def first_page(self, button: Button, interaction: discord.Interaction):
         self.current_page = 0
         await self.update_message(interaction)
 
-    @discord.ui.button(emoji='<:TWD_PREVIOUS:1298504437823967323>', style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label='Previous', style=discord.ButtonStyle.secondary)
     async def previous_page(self, button: Button, interaction: discord.Interaction):
         if self.current_page > 0:
             self.current_page -= 1
         await self.update_message(interaction)
 
-    @discord.ui.button(emoji='<:TWD_NEXT:1298504381452517417>', style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label='Next', style=discord.ButtonStyle.secondary)
     async def next_page(self, button: Button, interaction: discord.Interaction):
         if self.current_page < len(self.pages) - 1:
             self.current_page += 1
         await self.update_message(interaction)
 
-    @discord.ui.button(emoji='<a:TWD_CROSS:1183023325992202274>', style=discord.ButtonStyle.danger)
+    @discord.ui.button(label='Delete', style=discord.ButtonStyle.danger)
     async def delete(self, button: Button, interaction: discord.Interaction):
         await interaction.message.delete()
 
@@ -84,8 +84,11 @@ async def servers(interaction: discord.Interaction):
             embed.add_field(name=guild.name, value=f"Link: {guild.vanity_url if guild.vanity_url else 'No link'}", inline=False)
         embeds.append(embed)
 
-    view = PaginationView(embeds)
-    await interaction.response.send_message(embed=embeds[0], view=view)
+    if embeds:
+        view = PaginationView(embeds)
+        await interaction.response.send_message(embed=embeds[0], view=view)
+    else:
+        await interaction.response.send_message("No servers found.")
 
 # Role management commands
 async def manage_role(interaction, member, role_name, action):
@@ -107,12 +110,12 @@ async def manage_role(interaction, member, role_name, action):
 async def mute(interaction: discord.Interaction, member: discord.Member):
     view = ConfirmationView(interaction, member, 'mute')
     embed = discord.Embed(title="Confirmation", description=f"Are you sure you want to mute {member.display_name}?")
-    await interaction.response.send_message(embed= embed, view=view)
+    await interaction.response.send_message(embed=embed, view=view)
 
 # Unmute command
-@bot.tree.command(name='unmute')
+@bot.tree.command (name='unmute')
 async def unmute(interaction: discord.Interaction, member: discord.Member):
-    view = ConfirmationView(interaction, member, 'unmute ')
+    view = ConfirmationView(interaction, member, 'unmute')
     embed = discord.Embed(title="Confirmation", description=f"Are you sure you want to unmute {member.display_name}?")
     await interaction.response.send_message(embed=embed, view=view)
 
@@ -155,5 +158,15 @@ class ConfirmationView(View):
     async def cancel(self, button: Button, interaction: discord.Interaction):
         await interaction.response.send_message("Action cancelled.")
         await interaction.message.delete()
+
+# Remove old slash commands
+@bot.event
+async def on_ready():
+    guild_ids = [guild.id for guild in bot.guilds]
+    for guild_id in guild_ids:
+        guild = bot.get_guild(guild_id)
+        commands = await guild.fetch_commands()
+        for command in commands:
+            await command.delete()
 
 bot.run(TOKEN)
