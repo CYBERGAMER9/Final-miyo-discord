@@ -1,140 +1,140 @@
-from dotenv import load_dotenv
-import os
-from threading import Thread
 import discord
 from discord.ext import commands
-from flask import Flask, render_template
+from discord.ui import Button, View
+import os
+from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
+
 TOKEN = os.getenv('DISCORD_TOKEN')
+USER_ID = 1169487822344962060  # Specific user ID
 
-# Enable necessary intents
+# Enable message content intent
 intents = discord.Intents.default()
+intents.guilds = True
 intents.members = True
-intents.message_content = True
+intents.message_content = True  # Add this line to enable message content intent
 
-# Initialize Discord bot
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Flask app setup
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return render_template('index.html')
-
-@app.route('/commands')
-def commands_page():
-    return render_template('commands.html')
-
-# Pagination classes
-class PaginationView(discord.ui.View):
-    def __init__(self, pages: list[str], *, interaction: discord.Interaction):
+# Pagination class for server list
+class PaginationView(View):
+    def __init__(self, pages):
         super().__init__()
         self.pages = pages
         self.current_page = 0
-        self.interaction = interaction
-        self.update_buttons()
 
-    def update_buttons(self):
-        self.go_to_first_page.disabled = self.current_page == 0
-        self.go_to_previous_page.disabled = self.current_page == 0
-        self.go_to_next_page.disabled = self.current_page >= len(self.pages) - 1
-        self.go_to_last_page.disabled = self.current_page >= len(self.pages) - 1
-
-    async def show_page(self):
-        await self.interaction.response.edit_message(content=self.pages[self.current_page], view=self)
-
-    @discord.ui.button(label="First", style=discord.ButtonStyle.blurple)
-    async def go_to_first_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(emoji='<:TWD_FIRST:1209075732676874340>', style=discord.ButtonStyle.secondary)
+    async def first_page(self, button: Button, interaction: discord.Interaction):
         self.current_page = 0
-        await self.show_page()
+        await self.update_message(interaction)
 
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.blurple)
-    async def go_to_previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(emoji='<:TWD_PREVIOUS:1298504437823967323>', style=discord.ButtonStyle.secondary)
+    async def previous_page(self, button: Button, interaction: discord.Interaction):
         if self.current_page > 0:
             self.current_page -= 1
-            await self.show_page()
+        await self.update_message(interaction)
 
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.blurple)
-    async def go_to_next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(emoji='<:TWD_NEXT:1298504381452517417>', style=discord.ButtonStyle.secondary)
+    async def next_page(self, button: Button, interaction: discord.Interaction):
         if self.current_page < len(self.pages) - 1:
             self.current_page += 1
-            await self.show_page()
+        await self.update_message(interaction)
 
-    @discord.ui.button(label="Last", style=discord.ButtonStyle.blurple)
-    async def go_to_last_page(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.current_page = len(self.pages) - 1
-        await self.show_page()
+    @discord.ui.button(emoji='<a:TWD_CROSS:1183023325992202274>', style=discord.ButtonStyle.danger)
+    async def delete(self, button: Button, interaction: discord.Interaction):
+        await interaction.message.delete()
 
-# Mute role creation function
-async def get_or_create_muted_role(guild):
-    role = discord.utils.get(guild.roles, name="Muted")
+    async def update_message(self, interaction):
+        embed = self.pages[self.current_page]
+        await interaction.response.edit_message(embed=embed)
+
+# Command to list servers
+@bot.tree.command(name='servers')
+async def servers(interaction: discord.Interaction):
+    if interaction.user.id != USER_ID:
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+        return
+
+    guilds = bot.guilds
+    embeds = []
+    for i in range(0, len(guilds), 5):
+        embed = discord.Embed(title="Servers", description="List of servers:")
+        for guild in guilds[i:i + 5]:
+            embed.add_field(name=guild.name, value=f"Link: {guild.vanity_url if guild.vanity_url else 'No link'}", inline=False)
+        embeds.append(embed)
+
+    view = PaginationView(embeds)
+    await interaction.response.send_message(embed=embeds[0], view=view)
+
+# Role management commands
+async def manage_role(interaction, member, role_name, action):
+    role = discord.utils.get(interaction.guild.roles, name=role_name)
     if not role:
-        role = await guild.create_role(name="Muted", permissions=discord.Permissions(send_messages=False, speak=False, connect=False, add_reactions=False))
-    return role
+        role = await interaction.guild.create_role(name=role_name)
+        for channel in interaction.guild.channels:
+            await channel.set_permissions(role, speak=False, send_messages=False)
 
-# Slash commands
-@bot.tree.command(name="mute", description="Mute a member")
-@commands.has_permissions(manage_roles=True)
-async def mute_app_command(interaction: discord.Interaction, member: discord.Member):
-    muted_role = await get_or_create_muted_role(interaction.guild)
-    await member.add_roles(muted_role)
-    await interaction.response.send_message(f"{member.mention} has been muted successfully.")
+    if action == 'add':
+        await member.add_roles(role)
+        await interaction.response.send_message(f"{member.display_name} has been muted.")
+    elif action == 'remove':
+        await member.remove_roles(role)
+        await interaction.response.send_message(f"{member.display_name} has been unmuted.")
 
-@bot.tree.command(name="unmute", description="Unmute a member")
-@commands.has_permissions(manage_roles=True)
-async def unmute_app_command(interaction: discord.Interaction, member: discord.Member):
-    muted_role = discord.utils.get(interaction.guild.roles, name="Muted")
-    if muted_role in member.roles:
-        await member.remove_roles(muted_role)
-        await interaction.response.send_message(f"{member.mention} has been unmuted successfully.")
-    else:
-        await interaction.response.send_message(f"{member.mention} is not muted.")
+# Mute command
+@bot.tree.command(name='mute')
+async def mute(interaction: discord.Interaction, member: discord.Member):
+    view = ConfirmationView(interaction, member, 'mute')
+    embed = discord.Embed(title="Confirmation", description=f"Are you sure you want to mute {member.display_name}?")
+    await interaction.response.send_message(embed=embed, view=view)
 
-@bot.tree.command(name="kick", description="Kick a member")
-@commands.has_permissions(kick_members=True)
-async def kick_app_command(interaction: discord.Interaction, member: discord.Member, reason: str = None):
-    await member.kick(reason=reason)
-    await interaction.response.send_message(f"{member.mention} has been kicked from the server.")
+# Unmute command
+@bot.tree.command(name='unmute')
+async def unmute(interaction: discord.Interaction, member: discord.Member):
+    view = ConfirmationView(interaction, member, 'unmute')
+    embed = discord.Embed(title="Confirmation", description=f"Are you sure you want to unmute {member.display_name}?")
+    await interaction.response.send_message(embed=embed, view=view)
 
-@bot.tree.command(name="ban", description="Ban a member")
-@commands.has_permissions(ban_members=True)
-async def ban_app_command(interaction: discord.Interaction, member: discord.Member, reason: str = None):
-    await member.ban(reason=reason)
-    await interaction.response.send_message(f"{member.mention} has been banned from the server.")
+# Kick command
+@bot.tree.command(name='kick')
+async def kick(interaction: discord.Interaction, member: discord.Member):
+    view = ConfirmationView(interaction, member, 'kick')
+    embed = discord.Embed(title="Confirmation", description=f"Are you sure you want to kick {member.display_name}?")
+    await interaction.response.send_message(embed=embed, view=view)
 
-@bot.tree.command(name="unban", description="Unban a member")
-@commands.has_permissions(ban_members=True)
-async def unban_app_command(interaction: discord.Interaction, member_name: str):
-    banned_users = await interaction.guild.bans()
-    member_name, member_discriminator = member_name.split('#')
-    for ban in banned_users:
-        user = ban.user
-        if (user.name, user.discriminator) == (member_name, member_discriminator):
-            await interaction.guild.unban(user)
-            await interaction.response.send_message(f"{user.mention} has been unbanned from the server.")
-            return
-    await interaction.response.send_message(f"User not found.")
+# Ban command
+@bot.tree.command(name='ban')
+async def ban(interaction: discord.Interaction, member: discord.Member):
+    view = ConfirmationView(interaction, member, 'ban')
+    embed = discord.Embed(title="Confirmation", description=f"Are you sure you want to ban {member.display_name}?")
+    await interaction.response.send_message(embed=embed, view=view)
 
-@bot.tree.command(name="timeout", description="Timeout a member")
-@commands.has_permissions(moderate_members=True)
-async def timeout_app_command(interaction: discord.Interaction, member: discord.Member, duration: int):
-    await member.timeout(duration=discord.utils.utcnow() + discord.timedelta(minutes=duration))
-    await interaction.response.send_message(f"{member.mention} has been timed out for {duration} minutes.")
+# Confirmation view for role management commands
+class ConfirmationView(View):
+    def __init__(self, interaction, member, action):
+        super().__init__()
+        self.interaction = interaction
+        self.member = member
+        self.action = action
 
-@bot.tree.command(name="untimeout", description="Untimeout a member")
-@commands.has_permissions(moderate_members=True)
-async def untimeout_app_command(interaction: discord.Interaction, member: discord.Member):
-    await member.timeout(duration=None)
-    await interaction.response.send_message(f"{member.mention} has been untimeouted.")
+    @discord.ui.button(label='Confirm', style=discord.ButtonStyle.green)
+    async def confirm(self, button: Button, interaction: discord.Interaction):
+        if self.action == 'mute':
+            await manage_role(interaction, self.member, 'Muted', 'add')
+        elif self.action == 'unmute':
+            await manage_role(interaction, self.member, 'Muted', 'remove')
+        elif self.action == 'kick':
+            await self.member.kick()
+            await interaction.response.send_message(f"{self.member.display_name} has been kicked.")
+        elif self.action == 'ban':
+            await self.member.ban()
+            await interaction.response.send_message(f"{self.member.display_name} has been banned.")
+        await interaction.message.delete()
 
-# Run Flask app in a separate thread
-def run_app():
-    app.run(host='0.0.0.0', port=8080)
+    @discord.ui.button(label='Cancel', style=discord.ButtonStyle.red)
+    async def cancel(self, button: Button, interaction: discord.Interaction):
+        await interaction.response.send_message("Action cancelled.")
+        await interaction.message.delete()
 
-Thread(target=run_app).start()
-
-# Run Discord bot
 bot.run(TOKEN)
