@@ -113,7 +113,7 @@ async def mute(interaction: discord.Interaction, member: discord.Member):
     await interaction.response.send_message(embed=embed, view=view)
 
 # Unmute command
-@bot.tree.command (name='unmute')
+@bot.tree.command(name='unmute ')
 async def unmute(interaction: discord.Interaction, member: discord.Member):
     view = ConfirmationView(interaction, member, 'unmute')
     embed = discord.Embed(title="Confirmation", description=f"Are you sure you want to unmute {member.display_name}?")
@@ -165,7 +165,7 @@ async def on_ready():
     guild_ids = [guild.id for guild in bot.guilds]
     for guild_id in guild_ids:
         guild = bot.get_guild(guild_id)
-        commands = await guild.fetch_commands()
+        commands = await bot.tree.fetch_commands(guild=guild)
         for command in commands:
             await command.delete()
 
