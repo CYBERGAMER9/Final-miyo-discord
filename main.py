@@ -3,7 +3,7 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 from discord import app_commands
-from discord.ui import View, Button
+from discord.ui import View
 from discord.utils import get
 
 # Load environment variables
@@ -24,7 +24,7 @@ async def on_ready():
 
 # Application command for ban
 @bot.tree.command(name="ban", description="Ban a user")
-async def ban(interaction: discord.Interaction, user: discord.Option(discord.Member, "User  to ban")):
+async def ban(interaction: discord.Interaction, user: app_commands.Option(discord.Member, "User  to ban")):
     view = ConfirmBanView(interaction.user, user)
     await interaction.response.send_message(f"Are you sure you want to ban {user.mention}?", view=view, ephemeral=True)
 
@@ -48,7 +48,7 @@ class ConfirmBanView(View):
 
 # Application command for unban
 @bot.tree.command(name="unban", description="Unban a user")
-async def unban(interaction: discord.Interaction, user: discord.Option(discord.User, "User  to unban")):
+async def unban(interaction: discord.Interaction, user: app_commands.Option(discord.User, "User  to unban")):
     view = ConfirmUnbanView(interaction.user, user)
     await interaction.response.send_message(f"Are you sure you want to unban {user.mention}?", view=view, ephemeral=True)
 
@@ -72,7 +72,7 @@ class ConfirmUnbanView(View):
 
 # Application command for kick
 @bot.tree.command(name="kick", description="Kick a user")
-async def kick(interaction: discord.Interaction, user: discord.Option(discord.Member, "User  to kick")):
+async def kick(interaction: discord.Interaction, user: app_commands.Option(discord.Member, "User  to kick")):
     view = ConfirmKickView(interaction.user, user)
     await interaction.response.send_message(f"Are you sure you want to kick {user.mention}?", view=view, ephemeral=True)
 
@@ -95,8 +95,8 @@ class ConfirmKickView(View):
         await interaction.response.send_message("Action cancelled", ephemeral=True)
 
 # Application command for mute
-@bot.tree.command(name ="mute", description="Mute a user")
-async def mute(interaction: discord.Interaction, user: discord.Option(discord.Member, "User  to mute")):
+@bot.tree.command(name="mute", description="Mute a user ")
+async def mute(interaction: discord.Interaction, user: app_commands.Option(discord.Member, "User  to mute")):
     muted_role = get(interaction.guild.roles, name="muted")
     if not muted_role:
         muted_role = await interaction.guild.create_role(name="muted")
@@ -124,7 +124,7 @@ class ConfirmMuteView(View):
 
 # Application command for unmute
 @bot.tree.command(name="unmute", description="Unmute a user")
-async def unmute(interaction: discord.Interaction, user: discord.Option(discord.Member, "User  to unmute")):
+async def unmute(interaction: discord.Interaction, user: app_commands.Option(discord.Member, "User  to unmute")):
     muted_role = get(interaction.guild.roles, name="muted")
     if muted_role in user.roles:
         await user.remove_roles(muted_role)
@@ -184,7 +184,7 @@ class ServerView(View):
         await interaction.response.delete_message()
 
     @discord.ui.button(emoji="<:TWD_NEXT:1298504381452517417>")
-    async def next(self, interaction : discord.Interaction, button: discord.ui.Button):
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.current += 1
         if self.current >= len(self.embeds):
             self.current = 0
